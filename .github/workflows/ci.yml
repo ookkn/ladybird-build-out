@@ -12,7 +12,7 @@ concurrency:
 jobs:
   # CI matrix - runs the job in lagom-template.yml with different configurations.
   Lagom:
-    if: github.repository == 'LadybirdBrowser/ladybird'
+    if: github.repository == 'ookkn/ladybird-build-out'
     name: ${{ matrix.os_name }}, ${{ matrix.arch }}, ${{ matrix.build_preset }}, ${{ matrix.toolchain }}
 
     strategy:
