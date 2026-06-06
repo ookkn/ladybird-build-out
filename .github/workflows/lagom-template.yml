@@ -167,7 +167,7 @@ jobs:
             -DCMAKE_CXX_COMPILER=${{ steps.build-parameters.outputs.host_cxx }} \
             -DLagomTools_DIR=${GITHUB_WORKSPACE}/Build/host-tools/share/LagomTools
 
-      # === BUILD ===
+        # === BUILD ===
 
       - name: Build
         working-directory: ${{ github.workspace }}/Build
@@ -182,14 +182,21 @@ jobs:
           cmake --preset ${{ inputs.build_preset }} -B Build -DLADYBIRD_GUI_FRAMEWORK=Qt
           cmake --build Build
 
+      # ADD THIS STEP HERE
+      - name: Upload Ladybird Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ladybird-${{ inputs.os_name }}-${{ inputs.arch }}-${{ inputs.build_preset }}
+          path: |
+            ${{ github.workspace }}/Install
+            ${{ github.workspace }}/Build/bin
+          retention-days: 7
+
       - name: Save Caches
         uses: ./.github/actions/cache-save
         with:
           arch: ${{ inputs.arch }}
           ccache_path: ${{ steps.setup.outputs.ccache_path }}
-          ccache_primary_key: ${{ steps.cache-restore.outputs.ccache_primary_key }}
-          vcpkg_cache_path: ${{ steps.setup.outputs.vcpkg_cache_path }}
-          vcpkg_cache_primary_key: ${{ steps.cache-restore.outputs.vcpkg_cache_primary_key }}
 
       # === TEST ===
 
