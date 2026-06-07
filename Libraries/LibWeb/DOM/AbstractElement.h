@@ -26,11 +26,11 @@ public:
     Element const& element() const { return m_element; }
     Optional<CSS::PseudoElement> pseudo_element() const { return m_pseudo_element; }
 
-    GC::Ptr<Layout::NodeWithStyle> layout_node();
-    GC::Ptr<Layout::NodeWithStyle const> layout_node() const { return const_cast<AbstractElement*>(this)->layout_node(); }
+    Layout::NodeWithStyle* layout_node();
+    Layout::NodeWithStyle const* layout_node() const { return const_cast<AbstractElement*>(this)->layout_node(); }
 
-    GC::Ptr<Layout::NodeWithStyle> unsafe_layout_node();
-    GC::Ptr<Layout::NodeWithStyle const> unsafe_layout_node() const { return const_cast<AbstractElement*>(this)->unsafe_layout_node(); }
+    Layout::NodeWithStyle* unsafe_layout_node();
+    Layout::NodeWithStyle const* unsafe_layout_node() const { return const_cast<AbstractElement*>(this)->unsafe_layout_node(); }
 
     struct TreeCountingFunctionResolutionContext {
         size_t sibling_count;
@@ -46,7 +46,7 @@ public:
 
     void set_inheritance_override(GC::Ref<Element> element) { m_inheritance_override = element; }
 
-    GC::Ptr<CSS::ComputedProperties const> computed_properties() const;
+    CSS::ComputedProperties const* computed_properties() const;
     GC::Ptr<CSS::CSSStyleProperties const> inline_style() const;
 
     void set_custom_property_data(RefPtr<CSS::CustomPropertyData const>);

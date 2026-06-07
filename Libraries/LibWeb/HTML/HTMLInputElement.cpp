@@ -107,7 +107,6 @@ void HTMLInputElement::initialize(JS::Realm& realm)
 void HTMLInputElement::visit_edges(Cell::Visitor& visitor)
 {
     Base::visit_edges(visitor);
-    image_provider_visit_edges(visitor);
     visitor.visit(m_inner_text_element);
     visitor.visit(m_text_node);
     visitor.visit(m_placeholder_element);
@@ -132,7 +131,7 @@ void HTMLInputElement::set_being_activated(bool activated)
         set_needs_repaint();
 }
 
-GC::Ptr<Layout::Node> HTMLInputElement::create_layout_node(GC::Ref<CSS::ComputedProperties> style)
+RefPtr<Layout::Node> HTMLInputElement::create_layout_node(CSS::ComputedProperties const& style)
 {
     if (type_state() == TypeAttributeState::Hidden)
         return nullptr;
@@ -140,15 +139,15 @@ GC::Ptr<Layout::Node> HTMLInputElement::create_layout_node(GC::Ref<CSS::Computed
     // NOTE: Image inputs are `appearance: none` per the default UA style,
     //       but we still need to create an ImageBox for them, or no image will get loaded.
     if (type_state() == TypeAttributeState::ImageButton) {
-        return heap().allocate<Layout::ImageBox>(document(), *this, move(style), *this);
+        return make_ref_counted<Layout::ImageBox>(document(), *this, style, *this);
     }
 
     // https://drafts.csswg.org/css-ui/#appearance-switching
     // This specification introduces the appearance property to provide some control over this behavior.
     // In particular, using appearance: none allows authors to suppress the native appearance of widgets,
     // giving them a primitive appearance where CSS can be used to restyle them.
-    if (style->appearance() == CSS::Appearance::None) {
-        return Element::create_layout_node_for_display_type(document(), style->display(), style, this);
+    if (style.appearance() == CSS::Appearance::None) {
+        return Element::create_layout_node_for_display_type(document(), style.display(), style, this);
     }
 
     switch (type_state()) {
@@ -156,18 +155,18 @@ GC::Ptr<Layout::Node> HTMLInputElement::create_layout_node(GC::Ref<CSS::Computed
     case TypeAttributeState::SubmitButton:
     case TypeAttributeState::Button:
     case TypeAttributeState::ResetButton:
-        return heap().allocate<Layout::BlockContainer>(document(), this, move(style));
+        return make_ref_counted<Layout::BlockContainer>(document(), this, style);
     case TypeAttributeState::Checkbox:
-        return heap().allocate<Layout::CheckBox>(document(), *this, move(style));
+        return make_ref_counted<Layout::CheckBox>(document(), *this, style);
     case TypeAttributeState::RadioButton:
-        return heap().allocate<Layout::RadioButton>(document(), *this, move(style));
+        return make_ref_counted<Layout::RadioButton>(document(), *this, style);
     case TypeAttributeState::Range:
-        return heap().allocate<Layout::RangeInputBox>(document(), *this, move(style));
+        return make_ref_counted<Layout::RangeInputBox>(document(), *this, style);
     case TypeAttributeState::Color:
     case TypeAttributeState::FileUpload:
-        return Element::create_layout_node_for_display_type(document(), style->display(), style, this);
+        return Element::create_layout_node_for_display_type(document(), style.display(), style, this);
     default:
-        return heap().allocate<Layout::TextInputBox>(document(), *this, move(style));
+        return make_ref_counted<Layout::TextInputBox>(document(), *this, style);
     }
 }
 

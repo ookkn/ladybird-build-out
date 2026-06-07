@@ -70,6 +70,7 @@
 #include <LibWeb/CSS/StyleSheetList.h>
 #include <LibWeb/CSS/StyleValues/ColorSchemeStyleValue.h>
 #include <LibWeb/CSS/StyleValues/GuaranteedInvalidStyleValue.h>
+#include <LibWeb/CSS/StyleValues/ImageStyleValue.h>
 #include <LibWeb/CSS/StyleValues/RandomValueSharingStyleValue.h>
 #include <LibWeb/CSS/SystemColor.h>
 #include <LibWeb/CSS/TransitionEvent.h>
@@ -671,7 +672,6 @@ void Document::visit_edges(Cell::Visitor& visitor)
     visitor.visit(m_pending_css_import_rules);
     visitor.visit(m_page);
     visitor.visit(m_window);
-    visitor.visit(m_layout_root);
     visitor.visit(m_style_sheets);
     visitor.visit(m_hovered_node);
     visitor.visit(m_inspected_node);
@@ -724,10 +724,11 @@ void Document::visit_edges(Cell::Visitor& visitor)
     for (auto& resize_observer : m_resize_observers)
         visitor.visit(resize_observer);
 
-    visitor.visit(m_svg_roots_needing_relayout);
     visitor.visit(m_query_containers_needing_container_query_evaluation_after_layout);
 
     visitor.visit(m_shared_resource_requests);
+    for (auto& resource : m_css_image_resources)
+        resource.value->visit_edges(visitor);
 
     visitor.visit(m_associated_animation_timelines);
     visitor.visit(m_list_of_available_images);
@@ -1350,6 +1351,7 @@ void Document::tear_down_layout_tree()
 {
     if (m_layout_root)
         m_layout_root->prepare_subtree_for_detach_from_layout_tree();
+    m_hit_test_display_list = nullptr;
     m_layout_root = nullptr;
     m_paintable = nullptr;
     m_needs_full_layout_tree_update = true;
@@ -1631,7 +1633,7 @@ void Document::invalidate_layout_tree(InvalidateLayoutTreeReason reason)
 
 void Document::mark_svg_root_as_needing_relayout(Layout::SVGSVGBox& svg_root)
 {
-    m_svg_roots_needing_relayout.set(svg_root);
+    m_svg_roots_needing_relayout.set(svg_root.make_weak_ptr<Layout::SVGSVGBox>());
 }
 
 void Document::set_needs_container_query_evaluation_after_layout(Element const& query_container)
@@ -1796,8 +1798,10 @@ void Document::update_layout(UpdateLayoutReason reason)
 
         // Partial SVG relayout
         if (!needs_layout_tree_rebuild && !svg_roots_to_relayout.is_empty() && !m_layout_root->needs_layout_update()) {
-            for (auto const& svg_root : svg_roots_to_relayout)
-                relayout_svg_root(*svg_root);
+            for (auto const& svg_root : svg_roots_to_relayout) {
+                if (svg_root)
+                    relayout_svg_root(*svg_root);
+            }
 
             invalidate_stacking_context_tree();
             set_needs_to_record_display_list();
@@ -2290,7 +2294,7 @@ static CSS::RequiredInvalidationAfterStyleChange recompute_style_for_targeted_st
     return {};
 }
 
-GC::Ptr<CSS::ComputedProperties const> Document::update_style_for_element(AbstractElement const& abstract_element, StyleUpdateMode mode)
+CSS::ComputedProperties const* Document::update_style_for_element(AbstractElement const& abstract_element, StyleUpdateMode mode)
 {
     // Refresh computed properties for an abstract element without requiring every unrelated dirty element in the
     // document to be resolved. This walks the flat-tree inheritance chain and re-cascades from the rootmost stale
@@ -2349,7 +2353,7 @@ GC::Ptr<CSS::ComputedProperties const> Document::update_style_for_element(Abstra
             ancestor_needs_descendant_style_recompute = true;
         }
 
-        if (auto const* properties = ancestor->computed_properties().ptr(); properties && properties->display().is_none()) {
+        if (auto const properties = ancestor->computed_properties(); properties && properties->display().is_none()) {
             topmost_display_none_index = i - 1;
             if (mode == StyleUpdateMode::StopAtDisplayNone && !topmost_element_requiring_style.has_value())
                 return nullptr;
@@ -2758,7 +2762,7 @@ void Document::clear_grid_highlighted_node(GC::Ptr<Node> node)
         node->set_needs_repaint();
 }
 
-GC::Ptr<Layout::Node> Document::highlighted_layout_node()
+Layout::Node* Document::highlighted_layout_node()
 {
     if (!m_highlighted_node)
         return nullptr;
@@ -6706,6 +6710,64 @@ HashMap<URL::URL, GC::Ptr<HTML::SharedResourceRequest>>& Document::shared_resour
     return m_shared_resource_requests;
 }
 
+HashMap<URL::URL, GC::Ptr<HTML::SharedResourceRequest>> const& Document::shared_resource_requests() const
+{
+    return m_shared_resource_requests;
+}
+
+CSS::ImageStyleValueResource* Document::css_image_resource(URL::URL const& url)
+{
+    auto it = m_css_image_resources.find(url);
+    if (it == m_css_image_resources.end())
+        return nullptr;
+    return it->value.ptr();
+}
+
+CSS::ImageStyleValueResource const* Document::css_image_resource(URL::URL const& url) const
+{
+    auto it = m_css_image_resources.find(url);
+    if (it == m_css_image_resources.end())
+        return nullptr;
+    return it->value.ptr();
+}
+
+CSS::ImageStyleValueResource& Document::ensure_css_image_resource(URL::URL const& url)
+{
+    if (auto* resource = css_image_resource(url))
+        return *resource;
+
+    auto resource = make<CSS::ImageStyleValueResource>(url);
+    auto& resource_ref = *resource;
+    m_css_image_resources.set(url, move(resource));
+    return resource_ref;
+}
+
+void Document::remove_css_image_resource_if_unused(URL::URL const& url)
+{
+    auto it = m_css_image_resources.find(url);
+    if (it == m_css_image_resources.end())
+        return;
+    if (!it->value->can_be_removed())
+        return;
+    m_css_image_resources.remove(it);
+}
+
+void Document::animate_css_image_resource(URL::URL const& url)
+{
+    if (auto* resource = css_image_resource(url))
+        resource->animate(*this);
+}
+
+u64 Document::active_css_image_animation_timer_count() const
+{
+    u64 count = 0;
+    for (auto const& it : m_css_image_resources) {
+        if (it.value->has_active_animation_timer())
+            ++count;
+    }
+    return count;
+}
+
 void Document::prune_image_resource_caches()
 {
     static constexpr size_t decoded_image_resource_cache_limit = 8 * MiB;
@@ -7858,16 +7920,18 @@ Vector<GC::Root<Range>> Document::find_matching_text(String const& query, CaseSe
                 match_start_position = &text_block.positions[i + 1];
 
             auto start_position = match_index.value() - match_start_position->start_offset + match_start_position->dom_offset_within_node;
-            auto& start_dom_node = match_start_position->dom_node;
+            auto start_dom_node = match_start_position->dom_node.ptr();
+            VERIFY(start_dom_node);
 
             auto* match_end_position = match_start_position;
             for (; i < text_block.positions.size() - 1 && (match_index.value() + utf16_query.length_in_code_units() > text_block.positions[i + 1].start_offset); ++i)
                 match_end_position = &text_block.positions[i + 1];
 
-            auto& end_dom_node = match_end_position->dom_node;
+            auto end_dom_node = match_end_position->dom_node.ptr();
+            VERIFY(end_dom_node);
             auto end_position = match_index.value() + utf16_query.length_in_code_units() - match_end_position->start_offset + match_end_position->dom_offset_within_node;
 
-            matches.append(Range::create(start_dom_node, start_position, end_dom_node, end_position));
+            matches.append(Range::create(*start_dom_node, start_position, *end_dom_node, end_position));
             match_start_position = match_end_position;
             offset = match_index.value() + utf16_query.length_in_code_units() + 1;
             if (offset >= text_view.length_in_code_units())

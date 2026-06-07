@@ -78,6 +78,22 @@ enum class DisplayListCommandType : u8 {
 #undef ENUMERATE_DISPLAY_LIST_COMMAND_TYPE
 };
 
+constexpr bool display_list_command_is_compositor_metadata(DisplayListCommandType type)
+{
+    switch (type) {
+    case DisplayListCommandType::CompositorScrollNode:
+    case DisplayListCommandType::CompositorStickyArea:
+    case DisplayListCommandType::CompositorWheelHitTestTarget:
+    case DisplayListCommandType::CompositorWheelHitTestTargetWithCornerRadii:
+    case DisplayListCommandType::CompositorMainThreadWheelEventRegion:
+    case DisplayListCommandType::CompositorViewportScrollbar:
+    case DisplayListCommandType::CompositorBlockingWheelEventRegion:
+        return true;
+    default:
+        return false;
+    }
+}
+
 enum class CompositorScrollNodeKind : u8 {
     Viewport,
     Element,
@@ -145,11 +161,10 @@ struct DrawScaledDecodedImageFrame {
     static constexpr DisplayListCommandType command_type = DisplayListCommandType::DrawScaledDecodedImageFrame;
 
     Gfx::IntRect dst_rect;
-    Gfx::IntRect clip_rect;
     ImageFrameResourceId frame_id;
     Gfx::ScalingMode scaling_mode;
 
-    [[nodiscard]] Gfx::IntRect bounding_rect() const { return clip_rect; }
+    [[nodiscard]] Gfx::IntRect bounding_rect() const { return dst_rect; }
     void dump(StringBuilder&) const;
 };
 
@@ -512,7 +527,6 @@ struct PaintNestedDisplayList {
     static constexpr DisplayListCommandType command_type = DisplayListCommandType::PaintNestedDisplayList;
 
     DisplayListResourceId display_list_id;
-    DisplayListDataSpan command_bytes;
     Gfx::IntRect rect;
 
     [[nodiscard]] Gfx::IntRect bounding_rect() const { return rect; }

@@ -14,6 +14,7 @@
 #include <AK/Function.h>
 #include <AK/HashMap.h>
 #include <AK/HashTable.h>
+#include <AK/NonnullRefPtr.h>
 #include <AK/Optional.h>
 #include <AK/OwnPtr.h>
 #include <AK/RefPtr.h>
@@ -54,6 +55,12 @@
 #include <LibWeb/ResizeObserver/ResizeObserver.h>
 #include <LibWeb/TrustedTypes/InjectionSink.h>
 #include <LibWeb/WebIDL/ExceptionOr.h>
+
+namespace Web::CSS {
+
+class ImageStyleValueResource;
+
+}
 
 namespace Web::DOM {
 
@@ -310,8 +317,8 @@ public:
 
     void set_highlighted_node(GC::Ptr<Node>, Optional<CSS::PseudoElement>);
     GC::Ptr<Node const> highlighted_node() const { return m_highlighted_node; }
-    GC::Ptr<Layout::Node> highlighted_layout_node();
-    GC::Ptr<Layout::Node const> highlighted_layout_node() const { return const_cast<Document*>(this)->highlighted_layout_node(); }
+    Layout::Node* highlighted_layout_node();
+    Layout::Node const* highlighted_layout_node() const { return const_cast<Document*>(this)->highlighted_layout_node(); }
     void set_flexbox_highlighted_node(GC::Ptr<Node>, Painting::FlexboxInspectorOverlayOptions);
     void clear_flexbox_highlighted_node(GC::Ptr<Node>);
     void set_grid_highlighted_node(GC::Ptr<Node>, Painting::GridInspectorOverlayOptions);
@@ -394,7 +401,7 @@ public:
         Normal,
         StopAtDisplayNone,
     };
-    GC::Ptr<CSS::ComputedProperties const> update_style_for_element(AbstractElement const&, StyleUpdateMode = StyleUpdateMode::Normal);
+    CSS::ComputedProperties const* update_style_for_element(AbstractElement const&, StyleUpdateMode = StyleUpdateMode::Normal);
     [[nodiscard]] bool element_needs_style_update(AbstractElement const&) const;
     void update_layout(UpdateLayoutReason);
     void update_layout_if_needed_for_node(Node const&, UpdateLayoutReason);
@@ -809,6 +816,13 @@ public:
     void update_for_history_step_application(NonnullRefPtr<HTML::SessionHistoryEntry>, bool do_not_reactivate, size_t script_history_length, size_t script_history_index, Optional<Bindings::NavigationType> navigation_type, Optional<Vector<NonnullRefPtr<HTML::SessionHistoryEntry>>> entries_for_navigation_api = {}, RefPtr<HTML::SessionHistoryEntry> previous_entry_for_activation = {}, bool update_navigation_api = true);
 
     HashMap<URL::URL, GC::Ptr<HTML::SharedResourceRequest>>& shared_resource_requests();
+    HashMap<URL::URL, GC::Ptr<HTML::SharedResourceRequest>> const& shared_resource_requests() const;
+    CSS::ImageStyleValueResource* css_image_resource(URL::URL const&);
+    CSS::ImageStyleValueResource const* css_image_resource(URL::URL const&) const;
+    CSS::ImageStyleValueResource& ensure_css_image_resource(URL::URL const&);
+    void remove_css_image_resource_if_unused(URL::URL const&);
+    void animate_css_image_resource(URL::URL const&);
+    u64 active_css_image_animation_timer_count() const;
     void prune_image_resource_caches();
 
     void restore_the_history_object_state(NonnullRefPtr<HTML::SessionHistoryEntry> entry);
@@ -1208,7 +1222,7 @@ private:
 
     GC::Ptr<HTML::Window> m_window;
 
-    GC::Ptr<Layout::Viewport> m_layout_root;
+    RefPtr<Layout::Viewport> m_layout_root;
 
     GC::Ptr<Node> m_hovered_node;
     GC::Ptr<Node> m_inspected_node;
@@ -1347,7 +1361,7 @@ private:
 
     bool m_is_running_update_layout { false };
 
-    HashTable<GC::Ref<Layout::SVGSVGBox>> m_svg_roots_needing_relayout;
+    HashTable<WeakPtr<Layout::SVGSVGBox>> m_svg_roots_needing_relayout;
 
     bool m_needs_animated_style_update { false };
 
@@ -1451,6 +1465,7 @@ private:
     RefPtr<HTML::SessionHistoryEntry> m_latest_entry;
 
     HashMap<URL::URL, GC::Ptr<HTML::SharedResourceRequest>> m_shared_resource_requests;
+    HashMap<URL::URL, OwnPtr<CSS::ImageStyleValueResource>> m_css_image_resources;
 
     // https://www.w3.org/TR/web-animations-1/#timeline-associated-with-a-document
     HashTable<GC::Ref<Animations::AnimationTimeline>> m_associated_animation_timelines;
